@@ -42,7 +42,7 @@ pub async fn link_to_text(link: &str) -> anyhow::Result<String> {
     let mut elapsed_time = 0;
 
     // if the text did not change for 20s
-    while is_ready < 200 || body_text.is_empty() {
+    while is_ready < 100 || body_text.is_empty() {
         let remote_object = website.wait_for_element("body")?.call_js_fn(r#"
             function is_ready() {
                 if (document.readyState === "complete") {

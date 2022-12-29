@@ -41,7 +41,8 @@ impl TryFrom<LinkToTextRequest> for Vec<u8> {
 
 #[derive(Serialize,Deserialize,Debug,Clone)]
 pub struct LinkToTextResult {
-    pub result: String,
+    pub text_nodes: Vec<String>,
+    pub hierarchical_segmentation: Vec<Vec<bool>>,
     pub request: LinkToTextRequest,
 }
 

@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
 
     if args.len() <= 1 {
         let text = link_to_text(LINK).await?;
-        println!("{}",text);
+        println!("{:?}",text);
         Ok(())
     }else{
         match args[1].as_str() {

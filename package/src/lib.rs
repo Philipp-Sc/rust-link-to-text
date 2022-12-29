@@ -1,3 +1,4 @@
+extern crate core;
 
 pub mod service;
 pub mod cache;
@@ -8,8 +9,9 @@ use std::time::Duration;
 
 use headless_chrome::{types::PrintToPdfOptions, Browser, LaunchOptions, util};
 use headless_chrome::browser::default_executable;
+use serde_json::Value;
 
-pub async fn link_to_text(link: &str) -> anyhow::Result<String> { 
+pub async fn link_to_text(link: &str) -> anyhow::Result<(Vec<String>,Vec<Vec<bool>>)> {
 
     let path = default_executable().unwrap();
 
@@ -78,46 +80,142 @@ pub async fn link_to_text(link: &str) -> anyhow::Result<String> {
     }
     println!("elapsed_time loading: {}",elapsed_time as f64 / 1000f64);
 
-    website.wait_for_element("body")?.call_js_fn(r#"
-            function text_only_mode() {
-                // Remove all elements that should not be included in the text-only view
-                var elements = document.querySelectorAll("button, input, img, svg");
-                for (var i = 0; i < elements.length; i++) {
-                    elements[i].remove();
-                }
-
-                // Disable all stylesheets and remove inline styles
-                var stylesheets = document.styleSheets;
-                for (var i = 0; i < stylesheets.length; i++) {
-                    stylesheets[i].disabled = true;
-                }
-                document.body.removeAttribute("style");
-
-                var target = document.querySelectorAll('div, p');
-                Array.prototype.forEach.call(target, function(element){
-                    element.removeAttribute('style');
-                });
-            }
-        "#, vec![], false)?;
-
-    println!("text_only_mode() done");
-
     let remote_object = website.wait_for_element("body")?.call_js_fn(r#"
             function get_text() {
-                let allText = document.body.innerText.trim();
-                return allText;
+                const buttons = document.querySelectorAll('.show-more-button');
+
+                buttons.forEach((button) => {
+                  button.click();
+                });
+
+                const inner_text = document.body.innerText;
+                const divElements = document.querySelectorAll('div');
+                const divArray = Array.from(divElements);
+
+                const leafDivs = divArray.filter((div) => {
+                  return !div.querySelector('div') && ((inner_text.includes(div.innerText) && div.innerText.length >=32) || (div.querySelector('p') || div.querySelector('h1')  || div.querySelector('span')));
+                });
+
+                const lucky_parents = divArray.filter((div) => {
+                  var c = false;
+                  for (const d of leafDivs) {
+                        if (div.contains(d)) {
+                            c = true;
+                      break;
+                        }
+                    }
+                  return c;
+                });
+
+                // iterate over the list of elements
+                lucky_parents.forEach((div) => {
+                  // remove the style attribute
+                  div.removeAttribute('style');
+                  div.removeAttribute('id');
+
+                  // remove all other attributes
+                  const attributes = div.attributes;
+                  for (let i = 0; i < attributes.length; i++) {
+                    div.removeAttribute(attributes[i].name);
+                  }
+                });
+
+                const toRemove = [...divElements].filter((div) => !lucky_parents.includes(div));
+
+                // remove the elements from the document
+                toRemove.forEach((div) => div.remove());
+
+                // set a flag to true to enter the loop
+                var found = true;
+
+                // run the loop until no more elements are found
+                while (found) {
+                  // find the first element that only contains one <div> element
+                  var div_found = Array.from(document.querySelectorAll('div')).find((div) => {
+
+                    // check if there is only one child node and it is a <div> element
+                    return div.childNodes.length === 1;
+                  });
+
+                  // check if an element was found
+                  if (div_found) {
+                    div_found.replaceWith(div_found.childNodes[0]);
+                  } else {
+                    // set the flag to false to exit the loop
+                    found = false;
+                  }
+                }
+                // get a list of all elements in the document
+                const elements = document.querySelectorAll('*');
+
+                // filter the elements to exclude those with no text content
+                const noTextElements = Array.from(elements).filter((element) => {
+                  return !element.innerText;
+                });
+
+                // remove the elements from the document
+                noTextElements.forEach((element) => {
+                  element.remove();
+                });
+
+                const currentdivElements = document.querySelectorAll('div');
+                const currentdivArray = Array.from(currentdivElements);
+                const currentleafDivs = currentdivArray.filter((div) => {
+                  return !div.querySelector('div');
+                });
+
+               const queue = [document.querySelector('div')]; // initialize the queue with the root element
+               var levels = [];
+                while (queue.length > 0) {
+                    const div = queue.shift(); // get the next element from the queue
+                    console.log(div.innerText); // process the current element
+
+                    var contained_divs = div.querySelectorAll('div');
+                    levels.push(currentleafDivs.map(div => {
+                        let found = false;
+                        contained_divs.forEach(each => {
+                            if (each === div) {
+                                found = true;
+                                return;
+                            }
+                        });
+                        return found;
+                    }));
+
+                    // add all children of the current element to the queue
+                    for (const child of div.children) {
+                        if (child.tagName === 'DIV') {
+                            queue.push(child);
+                        }
+                    }
+                }
+                console.log(levels);
+
+                return JSON.stringify({"text_nodes": currentleafDivs.map(div => div.innerText), "hierarchical_segmentation": levels.filter(a => a.includes(true))});
+                //return document.body.innerHTML;
             }
         "#, vec![], false)?;
 
     match remote_object.value {
         Some(returned_string) => {
 
-            let escaped = returned_string.to_string();
-            return Ok(escaped);
+            let val: Value = serde_json::from_str(returned_string.as_str().unwrap())?;
+            println!("{:?}",val);
 
+            let text_nodes = val
+                .get("text_nodes").unwrap()
+                .as_array().unwrap()
+                .into_iter().map(|y| y.as_str().unwrap().to_string()).collect::<Vec<String>>();
+
+            let hierarchical_segmentation = val
+                .get("hierarchical_segmentation").unwrap()
+                .as_array().unwrap()
+                .into_iter().map(|y| y.as_array().unwrap().into_iter().map(|x| x.as_bool().unwrap()).collect::<Vec<bool>>()).collect::<Vec<Vec<bool>>>();
+
+            Ok((text_nodes, hierarchical_segmentation))
         }
         _ => unreachable!()
-    };
+    }
 
     /*
     let pdf_options: Option<PrintToPdfOptions> = None; // use chrome's defaults for this example

@@ -8,7 +8,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 pub fn client_send_link_to_text_request(socket_path: &str, link: String) -> anyhow::Result<LinkToTextResult> {
-    println!("client_send_request initiating");
+    println!("Initiating link-to-text conversion request for link: {}", link);
     client_send_request(socket_path,LinkToTextRequest{link})
 }
 

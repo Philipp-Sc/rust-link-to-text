@@ -214,7 +214,10 @@ pub async fn link_to_text(link: &str) -> anyhow::Result<(Vec<String>,Vec<Vec<boo
 
             Ok((text_nodes, hierarchical_segmentation))
         }
-        _ => unreachable!()
+        None => {
+            // reached when page failed to load, for example due to a incorrect URL/IP.
+            Err(anyhow::anyhow!(format!("Error: Unreachable: Unable to load webpage: {}",link)))
+        }
     }
 
     /*

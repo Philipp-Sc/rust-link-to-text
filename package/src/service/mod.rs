@@ -45,12 +45,22 @@ pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     let mut result= LINK_TO_TEXT_STORE.get_item_by_hash::<LinkToTextResult>(hash)?;
 
     if result.is_none() {
-        let v = link_to_text(request.link.as_str()).await?;
-        result = Some(LinkToTextResult {
-            text_nodes: v.0,
-            hierarchical_segmentation: v.1,
-            request,
-        });
+        result = match link_to_text(request.link.as_str()).await {
+            Ok(v) => {
+                Some(LinkToTextResult {
+                    text_nodes: v.0,
+                    hierarchical_segmentation: v.1,
+                    request,
+                })
+            }
+            Err(_) => {
+                Some(LinkToTextResult {
+                    text_nodes: Vec::new(),
+                    hierarchical_segmentation: Vec::new(),
+                    request,
+                })
+            }
+        };
         LINK_TO_TEXT_STORE.insert_item(hash,result.clone().unwrap())?;
     };
 

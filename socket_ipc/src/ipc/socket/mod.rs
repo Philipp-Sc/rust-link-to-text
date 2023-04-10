@@ -35,7 +35,12 @@ pub fn spawn_socket_service<F,T>(socket_path: &str, handler: F) -> JoinHandle<()
                     .context("Failed at accepting a connection on the unix listener")
                     .unwrap();
 
-                handle_stream(unix_stream, &handler).await;
+                match handle_stream(unix_stream, &handler).await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        println!("Error: {:?}",err);
+                    }
+                }
             }
         }
     })

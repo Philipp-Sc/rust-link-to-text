@@ -211,7 +211,7 @@ pub async fn link_to_text(link: &str) -> anyhow::Result<(Vec<String>,Vec<Vec<boo
             if let Some(val) = v {
 
                 println!("{:?}", val);
-                
+
                 let text_nodes = val
                     .get("text_nodes").map(|x| x.as_array()).flatten().map(|x| x.into_iter().filter_map(|y| y.as_str()).map(|x| x.to_string()).collect::<Vec<String>>());
 

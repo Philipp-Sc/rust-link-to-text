@@ -21,7 +21,7 @@ pub fn load_store(path: &str) -> HashValueStore {
         .cache_capacity( 1024 * 1024 * 1024) // 1gb
         //.use_compression(true)
         //.compression_factor(22)
-        .flush_every_ms(Some(100))
+        .flush_every_ms(Some(1000))
         .open()
         .unwrap();
     HashValueStore::new(&db)
@@ -42,19 +42,18 @@ pub async fn process(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
 
     let hash = request.get_hash();
 
-    let result;
-    if LINK_TO_TEXT_STORE.contains_hash(hash)? {
-        result = LINK_TO_TEXT_STORE.get_item_by_hash::<LinkToTextResult>(hash)?.unwrap();
-    } else {
+    let mut result= LINK_TO_TEXT_STORE.get_item_by_hash::<LinkToTextResult>(hash)?;
+
+    if result.is_none() {
         let v = link_to_text(request.link.as_str()).await?;
-        result = LinkToTextResult {
+        result = Some(LinkToTextResult {
             text_nodes: v.0,
             hierarchical_segmentation: v.1,
             request,
-        };
-        LINK_TO_TEXT_STORE.insert_item(hash,result.clone()).ok();
+        });
+        LINK_TO_TEXT_STORE.insert_item(hash,result.clone().unwrap())?;
     };
 
-    let into_bytes: Vec<u8> = result.try_into()?;
+    let into_bytes: Vec<u8> = result.unwrap().try_into()?;
     Ok(into_bytes)
 }

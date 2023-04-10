@@ -13,16 +13,16 @@ use serde_json::Value;
 
 pub async fn link_to_text(link: &str) -> anyhow::Result<(Vec<String>,Vec<Vec<bool>>)> {
 
-    let path = default_executable().unwrap();
 
-    println!("{:?}",path);
+    println!("link: {:?}",link);
+
+    let path = default_executable()?;
 
     let mut launch_options = LaunchOptions::default_builder()
         .path(Some(path))
         .sandbox(false)
         .idle_browser_timeout(Duration::from_secs(60))
-        .build()
-        .unwrap();
+        .build()?;
 
     println!("launch_options available");
     let browser = Browser::new(launch_options)?;
@@ -196,28 +196,32 @@ pub async fn link_to_text(link: &str) -> anyhow::Result<(Vec<String>,Vec<Vec<boo
             }
         "#, vec![], false)?;
 
+    let err_msg = anyhow::anyhow!(format!("Error: Unreachable: Unable to load webpage: {}", link));
+
     match remote_object.value {
         Some(returned_string) => {
-
-            let val: Value = serde_json::from_str(returned_string.as_str().unwrap())?;
-            println!("{:?}",val);
+            let val: Value = serde_json::from_str(returned_string.as_str().ok_or(Err(err_msg.clone()))?)?;
+            println!("{:?}", val);
 
             let text_nodes = val
-                .get("text_nodes").unwrap()
-                .as_array().unwrap()
-                .into_iter().map(|y| y.as_str().unwrap().to_string()).collect::<Vec<String>>();
+                .get("text_nodes").ok_or(Err(err_msg.clone()))?
+                .as_array().ok_or(Err(err_msg.clone()))?
+                .into_iter()
+                .map(|y| y.as_str().ok_or(Err(err_msg.clone()))?.to_string())
+                .collect::<Vec<String>>();
 
             let hierarchical_segmentation = val
-                .get("hierarchical_segmentation").unwrap()
-                .as_array().unwrap()
-                .into_iter().map(|y| y.as_array().unwrap().into_iter().map(|x| x.as_bool().unwrap()).collect::<Vec<bool>>()).collect::<Vec<Vec<bool>>>();
+                .get("hierarchical_segmentation").ok_or(Err(err_msg.clone()))?
+                .as_array().ok_or(Err(err_msg.clone()))?
+                .into_iter()
+                .map(|y| y.as_array().ok_or(Err(err_msg.clone()))?
+                    .into_iter().map(|x| x.as_bool().ok_or(Err(err_msg.clone()))?)
+                    .collect::<Vec<bool>>())
+                .collect::<Vec<Vec<bool>>>();
 
             Ok((text_nodes, hierarchical_segmentation))
         }
-        None => {
-            // reached when page failed to load, for example due to a incorrect URL/IP.
-            Err(anyhow::anyhow!(format!("Error: Unreachable: Unable to load webpage: {}",link)))
-        }
+        None => Err(err_msg)
     }
 
     /*

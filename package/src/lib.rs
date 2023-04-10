@@ -13,10 +13,16 @@ use serde_json::Value;
 
 pub async fn link_to_text(link: &str) -> anyhow::Result<(Vec<String>,Vec<Vec<bool>>)> {
 
-
     println!("link: {:?}",link);
 
-    let path = default_executable()?;
+    let path = match default_executable() {
+        Ok(p) => {
+            Ok(p)
+        }
+        Err(err) => {
+            Err(anyhow::anyhow!(format!("Error: {:?}: Unable to load webpage: {}", err, link)))
+        }
+    }?;
 
     let mut launch_options = LaunchOptions::default_builder()
         .path(Some(path))
@@ -196,33 +202,35 @@ pub async fn link_to_text(link: &str) -> anyhow::Result<(Vec<String>,Vec<Vec<boo
             }
         "#, vec![], false)?;
 
-    let err_msg = anyhow::anyhow!(format!("Error: Unreachable: Unable to load webpage: {}", link));
+
 
     match remote_object.value {
         Some(returned_string) => {
-            let val: Value = serde_json::from_str(returned_string.as_str().ok_or(Err(err_msg.clone()))?)?;
-            println!("{:?}", val);
+            let v: Option<Value> = returned_string.as_str().map(|x| serde_json::from_str(x).ok()).flatten();
 
-            let text_nodes = val
-                .get("text_nodes").ok_or(Err(err_msg.clone()))?
-                .as_array().ok_or(Err(err_msg.clone()))?
-                .into_iter()
-                .map(|y| y.as_str().ok_or(Err(err_msg.clone()))?.to_string())
-                .collect::<Vec<String>>();
+            if let Some(val) = v {
 
-            let hierarchical_segmentation = val
-                .get("hierarchical_segmentation").ok_or(Err(err_msg.clone()))?
-                .as_array().ok_or(Err(err_msg.clone()))?
-                .into_iter()
-                .map(|y| y.as_array().ok_or(Err(err_msg.clone()))?
-                    .into_iter().map(|x| x.as_bool().ok_or(Err(err_msg.clone()))?)
-                    .collect::<Vec<bool>>())
-                .collect::<Vec<Vec<bool>>>();
+                println!("{:?}", val);
+                
+                let text_nodes = val
+                    .get("text_nodes").map(|x| x.as_array()).flatten().map(|x| x.into_iter().filter_map(|y| y.as_str()).map(|x| x.to_string()).collect::<Vec<String>>());
 
-            Ok((text_nodes, hierarchical_segmentation))
+                if let Some(t_n) = text_nodes {
+
+                    let hierarchical_segmentation = val
+                        .get("hierarchical_segmentation")
+                        .map(|x| x.as_array()).flatten()
+                        .map(|x| x.into_iter().filter_map(|y| y.as_array()).map(|y| y.into_iter().filter_map(|x| x.as_bool()).collect::<Vec<bool>>()).collect::<Vec<Vec<bool>>>());
+
+                    if let Some (h_s) = hierarchical_segmentation {
+                        return Ok((t_n, h_s));
+                    }
+                }
+            }
         }
-        None => Err(err_msg)
+        None => {}
     }
+    Err(anyhow::anyhow!(format!("Error: Unreachable: Unable to load webpage: {}", link)))
 
     /*
     let pdf_options: Option<PrintToPdfOptions> = None; // use chrome's defaults for this example
